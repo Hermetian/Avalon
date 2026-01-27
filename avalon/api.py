@@ -39,7 +39,12 @@ async def control() -> FileResponse:
 
 @app.get("/play")
 async def play() -> FileResponse:
-    return FileResponse(WEB_DIR / "player.html")
+    return FileResponse(WEB_DIR / "player_picker.html")
+
+
+@app.get("/game")
+async def game() -> FileResponse:
+    return FileResponse(WEB_DIR / "game.html")
 
 
 @app.post("/game/new")
