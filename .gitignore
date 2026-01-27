@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*
+.DS_Store
+*.sqlite
+*.db
+
+# Model cache
+models/

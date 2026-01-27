@@ -1,0 +1,456 @@
+from __future__ import annotations
+
+import asyncio
+import random
+import uuid
+from typing import Dict, List, Optional, Tuple
+
+from .models import (
+    Alignment,
+    ChatMessage,
+    CreateGameRequest,
+    Event,
+    GameConfig,
+    GameState,
+    Phase,
+    Player,
+    QuestRecord,
+    Role,
+)
+from .storage import EventStore
+
+EVIL_ROLES = {Role.assassin, Role.morgana, Role.mordred, Role.oberon, Role.minion}
+
+QUEST_TEAM_SIZES = {
+    5: [2, 3, 2, 3, 3],
+    6: [2, 3, 4, 3, 4],
+    7: [2, 3, 3, 4, 4],
+    8: [3, 4, 4, 5, 5],
+    9: [3, 4, 4, 5, 5],
+    10: [3, 4, 4, 5, 5],
+}
+
+DEFAULT_ROLE_SETS = {
+    5: [Role.merlin, Role.percival, Role.loyal_servant, Role.assassin, Role.minion],
+    6: [
+        Role.merlin,
+        Role.percival,
+        Role.loyal_servant,
+        Role.loyal_servant,
+        Role.assassin,
+        Role.morgana,
+    ],
+    7: [
+        Role.merlin,
+        Role.percival,
+        Role.loyal_servant,
+        Role.loyal_servant,
+        Role.assassin,
+        Role.morgana,
+        Role.minion,
+    ],
+    8: [
+        Role.merlin,
+        Role.percival,
+        Role.loyal_servant,
+        Role.loyal_servant,
+        Role.assassin,
+        Role.morgana,
+        Role.mordred,
+        Role.minion,
+    ],
+    9: [
+        Role.merlin,
+        Role.percival,
+        Role.loyal_servant,
+        Role.loyal_servant,
+        Role.loyal_servant,
+        Role.assassin,
+        Role.morgana,
+        Role.mordred,
+        Role.minion,
+    ],
+    10: [
+        Role.merlin,
+        Role.percival,
+        Role.loyal_servant,
+        Role.loyal_servant,
+        Role.loyal_servant,
+        Role.assassin,
+        Role.morgana,
+        Role.mordred,
+        Role.oberon,
+        Role.minion,
+    ],
+}
+
+
+def alignment_for(role: Role) -> Alignment:
+    if role in EVIL_ROLES:
+        return Alignment.evil
+    return Alignment.loyal
+
+
+def requires_two_fails(player_count: int, quest_number: int) -> bool:
+    return player_count >= 7 and quest_number == 4
+
+
+def team_size(player_count: int, quest_number: int) -> int:
+    sizes = QUEST_TEAM_SIZES.get(player_count)
+    if not sizes:
+        raise ValueError("Unsupported player count")
+    return sizes[quest_number - 1]
+
+
+class GameEngine:
+    def __init__(self, store: EventStore) -> None:
+        self._store = store
+        self._state: Optional[GameState] = None
+        self._lock = asyncio.Lock()
+
+    @property
+    def state(self) -> GameState:
+        if not self._state:
+            raise RuntimeError("Game not created")
+        return self._state
+
+    def has_state(self) -> bool:
+        return self._state is not None
+
+    async def create_game(self, req: CreateGameRequest) -> GameState:
+        async with self._lock:
+            player_count = len(req.players)
+            roles = req.roles or DEFAULT_ROLE_SETS.get(player_count)
+            if not roles:
+                raise ValueError("Unsupported player count or roles not provided")
+            if len(roles) != player_count:
+                raise ValueError("Role count must match player count")
+            config = GameConfig(
+                player_count=player_count,
+                roles=roles,
+                hammer_auto_approve=req.hammer_auto_approve,
+            )
+            self._store.clear()
+            self._state = GameState(
+                id=str(uuid.uuid4()),
+                config=config,
+                players=req.players,
+                started=False,
+                phase=Phase.lobby,
+            )
+            self._emit("game_created", {"player_count": player_count})
+            return self.state
+
+    async def start_game(self) -> GameState:
+        async with self._lock:
+            state = self.state
+            if state.started:
+                return state
+            self._assign_roles(state)
+            state.started = True
+            state.phase = Phase.team_proposal
+            state.leader_index = 0
+            state.quest_number = 1
+            state.proposal_attempts = 0
+            self._emit("game_started", {})
+            return state
+
+    async def apply_action(self, player_id: str, action_type: str, payload: Dict) -> GameState:
+        async with self._lock:
+            state = self.state
+            player = self._get_player(player_id)
+            if action_type == "chat":
+                message = payload.get("message", "")
+                if not message:
+                    raise ValueError("Message required")
+                state.chat.append(ChatMessage(player_id=player_id, message=message))
+                self._emit("chat", {"player_id": player_id, "message": message})
+                return state
+
+            if not state.started:
+                raise ValueError("Game not started")
+
+            if action_type == "propose_team":
+                return self._handle_propose(state, player, payload)
+            if action_type == "vote_team":
+                return self._handle_vote(state, player, payload)
+            if action_type == "quest_vote":
+                return self._handle_quest_vote(state, player, payload)
+            if action_type == "assassinate":
+                return self._handle_assassinate(state, player, payload)
+
+            raise ValueError(f"Unknown action: {action_type}")
+
+    def public_state(self) -> GameState:
+        state = self.state.model_copy(deep=True)
+        for p in state.players:
+            p.role = None
+        return state
+
+    def private_state_for(self, player_id: str) -> Dict:
+        state = self.public_state()
+        player = self._get_player(player_id)
+        for p in state.players:
+            if p.id == player_id:
+                p.role = player.role
+        return {
+            "state": state,
+            "role": player.role,
+            "knowledge": self._knowledge_for(player_id),
+            "alignment": alignment_for(player.role) if player.role else None,
+            "visibility": self._visibility_for(player_id),
+        }
+
+    def knowledge_for(self, player_id: str) -> List[str]:
+        return self._knowledge_for(player_id)
+
+    def _assign_roles(self, state: GameState) -> None:
+        roles = list(state.config.roles)
+        random.shuffle(roles)
+        for player, role in zip(state.players, roles):
+            player.role = role
+
+    def _handle_propose(self, state: GameState, player: Player, payload: Dict) -> GameState:
+        if state.phase != Phase.team_proposal:
+            raise ValueError("Not in team proposal phase")
+        leader = state.players[state.leader_index]
+        if player.id != leader.id:
+            raise ValueError("Only leader can propose")
+        team = payload.get("team", [])
+        if not isinstance(team, list):
+            raise ValueError("Team must be list of player IDs")
+        size = team_size(state.config.player_count, state.quest_number)
+        if len(team) != size:
+            raise ValueError("Invalid team size")
+        if len(set(team)) != len(team):
+            raise ValueError("Team has duplicates")
+        if not all(self._has_player(pid) for pid in team):
+            raise ValueError("Unknown player in team")
+        state.proposed_team = team
+        state.team_votes = {}
+        self._emit("team_proposed", {"leader_id": leader.id, "team": team})
+
+        if state.config.hammer_auto_approve and state.proposal_attempts >= 4:
+            state.phase = Phase.quest
+            self._emit("team_hammered", {"team": team})
+        else:
+            state.phase = Phase.team_vote
+        return state
+
+    def _handle_vote(self, state: GameState, player: Player, payload: Dict) -> GameState:
+        if state.phase != Phase.team_vote:
+            raise ValueError("Not in team vote phase")
+        approve = payload.get("approve")
+        if not isinstance(approve, bool):
+            raise ValueError("Approve must be boolean")
+        state.team_votes[player.id] = approve
+        self._emit("team_vote", {"player_id": player.id, "approve": approve})
+        if len(state.team_votes) < len(state.players):
+            return state
+
+        approvals = sum(1 for v in state.team_votes.values() if v)
+        rejects = len(state.players) - approvals
+        if approvals > rejects:
+            state.phase = Phase.quest
+            state.proposal_attempts = 0
+            self._emit("team_approved", {"approvals": approvals, "rejects": rejects})
+        else:
+            state.proposal_attempts += 1
+            state.proposed_team = []
+            state.team_votes = {}
+            state.phase = Phase.team_proposal
+            state.leader_index = (state.leader_index + 1) % len(state.players)
+            self._emit("team_rejected", {"approvals": approvals, "rejects": rejects})
+        return state
+
+    def _handle_quest_vote(self, state: GameState, player: Player, payload: Dict) -> GameState:
+        if state.phase != Phase.quest:
+            raise ValueError("Not in quest phase")
+        if player.id not in state.proposed_team:
+            raise ValueError("Only team members vote on quest")
+        success = payload.get("success")
+        if not isinstance(success, bool):
+            raise ValueError("Success must be boolean")
+        if player.role and alignment_for(player.role) == Alignment.loyal and not success:
+            raise ValueError("Loyal players must submit success")
+        state.quest_votes[player.id] = success
+        self._emit("quest_vote", {"player_id": player.id, "success": success})
+        if len(state.quest_votes) < len(state.proposed_team):
+            return state
+
+        fails = sum(1 for v in state.quest_votes.values() if not v)
+        needed = 2 if requires_two_fails(state.config.player_count, state.quest_number) else 1
+        succeeded = fails < needed
+        state.quest_history.append(
+            QuestRecord(
+                quest_number=state.quest_number,
+                team=list(state.proposed_team),
+                fails=fails,
+                succeeded=succeeded,
+            )
+        )
+        if succeeded:
+            state.success_count += 1
+        else:
+            state.fail_count += 1
+        self._emit(
+            "quest_resolved",
+            {"quest": state.quest_number, "fails": fails, "succeeded": succeeded},
+        )
+
+        state.proposed_team = []
+        state.team_votes = {}
+        state.quest_votes = {}
+
+        if state.success_count >= 3:
+            if any(p.role == Role.merlin for p in state.players):
+                state.phase = Phase.assassination
+            else:
+                state.phase = Phase.game_over
+                state.winner = Alignment.loyal
+            return state
+        if state.fail_count >= 3:
+            state.phase = Phase.game_over
+            state.winner = Alignment.evil
+            return state
+
+        state.quest_number += 1
+        state.phase = Phase.team_proposal
+        state.leader_index = (state.leader_index + 1) % len(state.players)
+        state.proposal_attempts = 0
+        return state
+
+    def _handle_assassinate(self, state: GameState, player: Player, payload: Dict) -> GameState:
+        if state.phase != Phase.assassination:
+            raise ValueError("Not in assassination phase")
+        if player.role != Role.assassin:
+            raise ValueError("Only assassin can act")
+        target_id = payload.get("target_id")
+        if not target_id or not self._has_player(target_id):
+            raise ValueError("Valid target_id required")
+        state.assassin_target = target_id
+        target = self._get_player(target_id)
+        if target.role == Role.merlin:
+            state.winner = Alignment.evil
+        else:
+            state.winner = Alignment.loyal
+        state.phase = Phase.game_over
+        self._emit("assassination", {"target_id": target_id, "hit": target.role == Role.merlin})
+        return state
+
+    def pending_actions(self) -> Tuple[List[str], List[str]]:
+        state = self.state
+        human_pending: List[str] = []
+        bot_pending: List[str] = []
+
+        def add_pending(pid: str) -> None:
+            player = self._get_player(pid)
+            if player.is_bot:
+                bot_pending.append(pid)
+            else:
+                human_pending.append(pid)
+
+        if state.phase == Phase.team_proposal:
+            leader = state.players[state.leader_index].id
+            if not state.proposed_team:
+                add_pending(leader)
+        elif state.phase == Phase.team_vote:
+            for p in state.players:
+                if p.id not in state.team_votes:
+                    add_pending(p.id)
+        elif state.phase == Phase.quest:
+            for pid in state.proposed_team:
+                if pid not in state.quest_votes:
+                    add_pending(pid)
+        elif state.phase == Phase.assassination:
+            assassin = next((p for p in state.players if p.role == Role.assassin), None)
+            if assassin and not state.assassin_target:
+                add_pending(assassin.id)
+        return human_pending, bot_pending
+
+    def _knowledge_for(self, player_id: str) -> List[str]:
+        player = self._get_player(player_id)
+        if not player.role:
+            return []
+        players_by_id = {p.id: p for p in self.state.players}
+        evil_known = [
+            p for p in self.state.players if p.role in EVIL_ROLES and p.role != Role.oberon
+        ]
+        if player.role in EVIL_ROLES and player.role != Role.oberon:
+            others = [p.name for p in evil_known if p.id != player.id]
+            return ["Known evil players (excluding Oberon): " + ", ".join(others)] if others else []
+        if player.role == Role.oberon:
+            return ["You are Oberon: evil but unknown to other evil players."]
+        if player.role == Role.merlin:
+            seen = [
+                p.name
+                for p in self.state.players
+                if p.role in EVIL_ROLES and p.role != Role.mordred
+            ]
+            return (
+                ["Evil players you see (excluding Mordred): " + ", ".join(seen)] if seen else []
+            )
+        if player.role == Role.percival:
+            merlin = [p.name for p in self.state.players if p.role == Role.merlin]
+            morgana = [p.name for p in self.state.players if p.role == Role.morgana]
+            candidates = merlin + morgana
+            if candidates:
+                return ["Merlin is one of: " + ", ".join(candidates)]
+        return []
+
+    def _visibility_for(self, player_id: str) -> List[Dict]:
+        player = self._get_player(player_id)
+        visibility: List[Dict] = []
+        for p in self.state.players:
+            entry = {
+                "id": p.id,
+                "name": p.name,
+                "alignment_hint": "unknown",
+                "role_hint": None,
+            }
+            visibility.append(entry)
+
+        if not player.role:
+            return visibility
+
+        if player.role in EVIL_ROLES and player.role != Role.oberon:
+            for entry in visibility:
+                target = self._get_player(entry["id"])
+                if target.role in EVIL_ROLES and target.role != Role.oberon:
+                    entry["alignment_hint"] = "evil"
+            return visibility
+
+        if player.role == Role.oberon:
+            entry = next(e for e in visibility if e["id"] == player_id)
+            entry["alignment_hint"] = "evil"
+            return visibility
+
+        if player.role == Role.merlin:
+            for entry in visibility:
+                target = self._get_player(entry["id"])
+                if target.role in EVIL_ROLES and target.role != Role.mordred:
+                    entry["alignment_hint"] = "evil"
+            return visibility
+
+        if player.role == Role.percival:
+            for entry in visibility:
+                target = self._get_player(entry["id"])
+                if target.role in (Role.merlin, Role.morgana):
+                    entry["alignment_hint"] = "merlin_candidate"
+            return visibility
+
+        entry = next(e for e in visibility if e["id"] == player_id)
+        entry["alignment_hint"] = alignment_for(player.role).value
+        return visibility
+
+    def _emit(self, event_type: str, payload: Dict) -> None:
+        self._store.append(Event(type=event_type, payload=payload))
+
+    def _has_player(self, player_id: str) -> bool:
+        return any(p.id == player_id for p in self.state.players)
+
+    def _get_player(self, player_id: str) -> Player:
+        for p in self.state.players:
+            if p.id == player_id:
+                return p
+        raise ValueError("Unknown player")

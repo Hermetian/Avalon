@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Avalon Control</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Avalon Control</p>
+          <h1>Launch the table. Hand out roles. Orchestrate the bots.</h1>
+          <p class="subhead">
+            Build the roster, choose the extra roles, then share the join links.
+          </p>
+        </div>
+        <div class="status">
+          <div class="status-label">Server</div>
+          <div class="status-value" id="serverStatus">Checking…</div>
+          <div class="status-label">Phase</div>
+          <div class="status-value" id="phaseValue">—</div>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>Roster</h2>
+          <div class="row split">
+            <div>
+              <label>Humans</label>
+              <div class="counter">
+                <button id="humanDown" class="ghost">-</button>
+                <span id="humanCount">2</span>
+                <button id="humanUp">+</button>
+              </div>
+            </div>
+            <div>
+              <label>AI Bots</label>
+              <div class="counter">
+                <button id="botDown" class="ghost">-</button>
+                <span id="botCount">3</span>
+                <button id="botUp">+</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">Total players: <span id="totalCount">5</span> (must be 5–10)</p>
+        </div>
+
+        <div class="panel">
+          <h2>Optional Roles</h2>
+          <div class="role-grid" id="roleGrid"></div>
+          <p class="hint" id="roleHint">Merlin, Percival, Assassin always included.</p>
+        </div>
+
+        <div class="panel">
+          <h2>Game Controls</h2>
+          <label class="toggle">
+            <input type="checkbox" id="hammerRule" checked />
+            <span>Hammer auto-approve on 5th proposal</span>
+          </label>
+          <div class="actions">
+            <button id="createGame">Create Game</button>
+            <button id="startGame" class="ghost">Start Game</button>
+          </div>
+          <p class="hint" id="setupHint"></p>
+        </div>
+
+        <div class="panel span">
+          <h2>Join Links</h2>
+          <p class="hint">Share with humans after you create the game.</p>
+          <div id="joinLinks" class="link-grid">No links yet.</div>
+        </div>
+
+        <div class="panel span">
+          <h2>Live State</h2>
+          <div class="split">
+            <div>
+              <h3>Public state</h3>
+              <pre id="publicState">Waiting for server…</pre>
+            </div>
+            <div>
+              <h3>Event log</h3>
+              <pre id="eventLog">No events yet.</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="/static/control.js"></script>
+  </body>
+</html>
