@@ -38,7 +38,7 @@ let botCount = 3;
 let evilCount = 2;
 let gameCreated = false;
 let gameStarted = false;
-let publicBaseUrl = window.location.origin;
+let publicBaseUrl = null;
 let tunnelPolling = null;
 
 function defaultEvilCount(total) {
@@ -143,6 +143,10 @@ function buildRoles(totalPlayers) {
 
 function renderJoinLinks() {
   joinLinksEl.innerHTML = "";
+  if (!publicBaseUrl) {
+    joinLinksEl.textContent = "Creating public lobby link…";
+    return;
+  }
   const card = document.createElement("div");
   card.className = "link-card";
   const url = `${publicBaseUrl}/lobby`;
@@ -235,7 +239,7 @@ $("createGame").addEventListener("click", async () => {
     });
     setupHintEl.textContent = "Game created. Starting tunnel…";
     gameCreated = true;
-    publicBaseUrl = window.location.origin;
+    publicBaseUrl = null;
     renderJoinLinks();
     updateVisibility();
     await refreshState();
