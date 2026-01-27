@@ -20,6 +20,7 @@ const setupHintEl = $("setupHint");
 const roleHintEl = $("roleHint");
 const evilCountEl = $("evilCount");
 const goodCountEl = $("goodCount");
+const ladyToggle = $("ladyToggle");
 
 const roleOptions = [
   { name: "Percival", alignment: "good", defaultOn: true },
@@ -69,6 +70,10 @@ function createRoleButton(role) {
 }
 
 roleOptions.forEach((role) => roleGrid.appendChild(createRoleButton(role)));
+ladyToggle.addEventListener("click", () => {
+  ladyToggle.classList.toggle("active");
+  updateRoleHint();
+});
 
 function adjustCount(kind, delta) {
   if (kind === "human") {
@@ -112,7 +117,7 @@ function buildRoles(totalPlayers) {
   const goodRoles = ["Merlin"];
   const evilRoles = ["Assassin"];
 
-  const activeRoles = [...roleGrid.querySelectorAll(".role-toggle.active")].map(
+  const activeRoles = [...roleGrid.querySelectorAll(".role-toggle.active[data-role]")].map(
     (btn) => btn.dataset.role
   );
 
@@ -176,12 +181,11 @@ $("createGame").addEventListener("click", async () => {
     if (!roles) {
       throw new Error("Role selection does not fit the good/evil counts.");
     }
-    const hammer = $("hammerRule").checked;
-    const lady = $("ladyRule").checked;
+    const lady = ladyToggle.classList.contains("active");
     await api("/game/new", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ players, roles, hammer_auto_approve: hammer, lady_of_lake: lady }),
+      body: JSON.stringify({ players, roles, hammer_auto_approve: true, lady_of_lake: lady }),
     });
     setupHintEl.textContent = "Game created.";
     renderJoinLinks(players);
@@ -212,8 +216,13 @@ function enforcePercivalRule() {
 }
 
 function updateRoleHint() {
-  const active = [...roleGrid.querySelectorAll(".role-toggle.active")].map((btn) => btn.dataset.role);
-  roleHintEl.textContent = `Mandatory: ${mandatoryRoles.join(", ")}. Selected: ${active.join(", ") || "None"}.`;
+  const active = [...roleGrid.querySelectorAll(".role-toggle.active[data-role]")].map(
+    (btn) => btn.dataset.role
+  );
+  const lady = ladyToggle.classList.contains("active") ? "Lady of the Lake" : "Lady off";
+  roleHintEl.textContent = `Mandatory: ${mandatoryRoles.join(", ")}. Selected: ${active.join(
+    ", "
+  ) || "None"}. ${lady}.`;
 }
 
 updateRoleHint();

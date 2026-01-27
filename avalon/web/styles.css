@@ -42,6 +42,12 @@ body {
   align-items: flex-start;
 }
 
+.hero-stack {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
 .hero h1 {
   font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
   font-size: clamp(2.3rem, 3.2vw, 3.4rem);
@@ -75,6 +81,18 @@ body {
   min-width: 220px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
+}
+
+.action-card {
+  background: var(--panel);
+  border: var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+
+.action-card .actions {
+  margin-top: 10px;
 }
 
 .status-label {
@@ -239,6 +257,10 @@ pre {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.role-grid-footer {
+  margin-top: 10px;
 }
 
 .role-toggle {

@@ -16,11 +16,21 @@
             Choose players and roles, then share the join links for humans.
           </p>
         </div>
-        <div class="status">
-          <div class="status-label">Server</div>
-          <div class="status-value" id="serverStatus">Checking…</div>
-          <div class="status-label">Phase</div>
-          <div class="status-value" id="phaseValue">—</div>
+        <div class="hero-stack">
+          <div class="status">
+            <div class="status-label">Server</div>
+            <div class="status-value" id="serverStatus">Checking…</div>
+            <div class="status-label">Phase</div>
+            <div class="status-value" id="phaseValue">—</div>
+          </div>
+          <div class="action-card">
+            <div class="status-label">Launch</div>
+            <div class="actions">
+              <button id="createGame">Create Game</button>
+              <button id="startGame" class="ghost">Start Game</button>
+            </div>
+            <p class="hint" id="setupHint"></p>
+          </div>
         </div>
       </header>
 
@@ -67,24 +77,10 @@
         <div class="panel">
           <h2>Optional Roles</h2>
           <div class="role-grid" id="roleGrid"></div>
-          <p class="hint" id="roleHint">Merlin & Assassin always included. Percival enables Morgana.</p>
-        </div>
-
-        <div class="panel">
-          <h2>Game Controls</h2>
-          <label class="toggle">
-            <input type="checkbox" id="hammerRule" checked />
-            <span>Hammer auto-approve on 5th proposal</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="ladyRule" checked />
-            <span>Lady of the Lake enabled</span>
-          </label>
-          <div class="actions">
-            <button id="createGame">Create Game</button>
-            <button id="startGame" class="ghost">Start Game</button>
+          <div class="role-grid role-grid-footer">
+            <button id="ladyToggle" class="role-toggle" data-feature="lady">Lady of the Lake</button>
           </div>
-          <p class="hint" id="setupHint"></p>
+          <p class="hint" id="roleHint">Merlin & Assassin always included. Percival enables Morgana.</p>
         </div>
 
         <div class="panel span">
