@@ -359,6 +359,10 @@ pre {
   padding: 10px 12px;
 }
 
+.host-only.hidden {
+  display: none;
+}
+
 .slot-tag {
   font-size: 0.7rem;
   letter-spacing: 0.12em;

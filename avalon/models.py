@@ -39,6 +39,7 @@ class Player(BaseModel):
     is_bot: bool = False
     role: Optional[Role] = None
     claimed: bool = False
+    ready: bool = False
 
 
 class ChatMessage(BaseModel):
@@ -109,3 +110,12 @@ class PlayerUpdateRequest(BaseModel):
 class PlayerAddRequest(BaseModel):
     is_bot: bool = False
     name: Optional[str] = None
+
+
+class PlayerJoinRequest(BaseModel):
+    name: str
+
+
+class PlayerReadyRequest(BaseModel):
+    player_id: str
+    ready: bool = True

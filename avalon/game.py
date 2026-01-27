@@ -240,6 +240,44 @@ class GameEngine:
             self._emit("player_claimed", {"player_id": player_id, "name": player.name})
             return state
 
+    async def join_next_human(self, name: str) -> Player:
+        async with self._lock:
+            state = self.state
+            if state.started:
+                raise ValueError("Game already started")
+            for player in state.players:
+                if not player.is_bot and not player.claimed:
+                    player.claimed = True
+                    player.ready = False
+                    player.name = name
+                    self._emit("player_claimed", {"player_id": player.id, "name": player.name})
+                    return player
+            raise ValueError("No available human seats")
+
+    async def set_ready(self, player_id: str, ready: bool) -> GameState:
+        async with self._lock:
+            state = self.state
+            player = self._get_player(player_id)
+            if player.is_bot:
+                raise ValueError("Bots cannot ready")
+            player.ready = ready
+            self._emit("player_ready", {"player_id": player_id, "ready": ready})
+            return state
+
+    async def remove_last_human_slot(self) -> GameState:
+        async with self._lock:
+            state = self.state
+            if state.started:
+                raise ValueError("Game already started")
+            humans = [p for p in state.players if not p.is_bot]
+            if not humans:
+                raise ValueError("No human slots to remove")
+            for candidate in reversed(humans):
+                if not candidate.claimed:
+                    state.players = [p for p in state.players if p.id != candidate.id]
+                    self._emit("player_removed", {"player_id": candidate.id})
+                    return state
+            raise ValueError("All human slots are claimed")
     async def reset_player(self, player_id: str) -> GameState:
         async with self._lock:
             state = self.state
@@ -247,6 +285,7 @@ class GameEngine:
                 raise ValueError("Game already started")
             player = self._get_player(player_id)
             player.claimed = False
+            player.ready = False
             suffix = player.id[1:] if len(player.id) > 1 else ""
             player.name = f"Bot {suffix}" if player.is_bot else f"Human {suffix}"
             self._emit("player_reset", {"player_id": player_id})

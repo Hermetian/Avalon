@@ -169,16 +169,12 @@ function buildRoles(totalPlayers) {
   return [...goodRoles, ...evilRoles];
 }
 
-function renderJoinLinks(players) {
-  if (!players.length) {
-    joinLinksEl.textContent = "No links yet.";
-    return;
-  }
+function renderJoinLinks() {
   joinLinksEl.innerHTML = "";
   const card = document.createElement("div");
   card.className = "link-card";
-  const url = `${publicBaseUrl}/play`;
-  card.innerHTML = `<strong>Player picker</strong><p class=\"hint\">${url}</p>`;
+  const url = `${publicBaseUrl}/lobby`;
+  card.innerHTML = `<strong>Lobby link</strong><p class=\"hint\">${url}</p>`;
   joinLinksEl.appendChild(card);
 }
 
@@ -188,13 +184,12 @@ function renderSlots(players) {
   players.forEach((player) => {
     const row = document.createElement("div");
     row.className = "slot-row";
-    const nameInput = document.createElement("input");
-    nameInput.value = player.name;
-    nameInput.disabled = player.is_bot;
-
     const tag = document.createElement("span");
     tag.className = "slot-tag";
     tag.textContent = player.is_bot ? "Bot" : player.claimed ? "Claimed" : "Open";
+    const nameInput = document.createElement("input");
+    nameInput.value = player.name;
+    nameInput.disabled = player.is_bot;
 
     const saveBtn = document.createElement("button");
     saveBtn.className = "ghost";
@@ -269,9 +264,6 @@ async function refreshState() {
     if (state.state?.players) {
       cachedPlayers = state.state.players;
       renderSlots(cachedPlayers);
-      if (gameCreated) {
-        renderJoinLinks(cachedPlayers);
-      }
     }
   } catch (err) {
     serverStatusEl.textContent = "Offline";
@@ -296,11 +288,11 @@ async function startTunnel() {
       const status = await api("/tunnel/status");
       if (status.tunnel.public_url) {
         publicBaseUrl = status.tunnel.public_url;
-        setupHintEl.textContent = `Public link: ${publicBaseUrl}`;
+        setupHintEl.textContent = `Lobby link ready.`;
         clearInterval(tunnelPolling);
         tunnelPolling = null;
         if (gameCreated) {
-          renderJoinLinks(cachedPlayers);
+          renderJoinLinks();
         }
       }
       if (status.tunnel.error) {
@@ -331,11 +323,11 @@ $("createGame").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ players, roles, hammer_auto_approve: true, lady_of_lake: lady }),
     });
-    setupHintEl.textContent = "Game created. Starting public tunnel…";
+    setupHintEl.textContent = "Game created. Starting tunnel…";
     gameCreated = true;
     publicBaseUrl = window.location.origin;
     cachedPlayers = players;
-    renderJoinLinks(players);
+    renderJoinLinks();
     updateVisibility();
     await refreshState();
     await refreshEvents();

@@ -12,7 +12,14 @@ from fastapi.staticfiles import StaticFiles
 from .bot.manager import BotManager
 from .config import SETTINGS
 from .game import GameEngine
-from .models import ActionRequest, CreateGameRequest, PlayerAddRequest, PlayerUpdateRequest
+from .models import (
+    ActionRequest,
+    CreateGameRequest,
+    PlayerAddRequest,
+    PlayerJoinRequest,
+    PlayerReadyRequest,
+    PlayerUpdateRequest,
+)
 from .storage import EventStore
 from .tunnel import TunnelManager
 
@@ -39,12 +46,17 @@ async def control() -> FileResponse:
 
 @app.get("/play")
 async def play() -> FileResponse:
-    return FileResponse(WEB_DIR / "player_picker.html")
+    return FileResponse(WEB_DIR / "lobby.html")
 
 
 @app.get("/game")
 async def game() -> FileResponse:
     return FileResponse(WEB_DIR / "game.html")
+
+
+@app.get("/lobby")
+async def lobby() -> FileResponse:
+    return FileResponse(WEB_DIR / "lobby.html")
 
 
 @app.post("/game/new")
@@ -93,6 +105,12 @@ async def remove_player(req: PlayerUpdateRequest) -> Dict:
     return {"state": engine.public_state()}
 
 
+@app.post("/game/players/remove_last_human")
+async def remove_last_human() -> Dict:
+    state = await engine.remove_last_human_slot()
+    return {"state": engine.public_state()}
+
+
 @app.post("/game/players/rename")
 async def rename_player(req: PlayerUpdateRequest) -> Dict:
     if not req.name:
@@ -112,6 +130,20 @@ async def claim_player(req: PlayerUpdateRequest) -> Dict:
     if not req.name:
         return JSONResponse(status_code=400, content={"error": "Name required"})
     state = await engine.claim_player(req.player_id, req.name)
+    return {"state": engine.public_state()}
+
+
+@app.post("/game/players/join")
+async def join_player(req: PlayerJoinRequest) -> Dict:
+    if not req.name:
+        return JSONResponse(status_code=400, content={"error": "Name required"})
+    player = await engine.join_next_human(req.name)
+    return {"player_id": player.id, "state": engine.public_state()}
+
+
+@app.post("/game/players/ready")
+async def ready_player(req: PlayerReadyRequest) -> Dict:
+    state = await engine.set_ready(req.player_id, req.ready)
     return {"state": engine.public_state()}
 
 
