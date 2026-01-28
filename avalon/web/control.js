@@ -205,9 +205,25 @@ async function refreshEvents() {
   }
 }
 
-function startCountdown(url) {
+async function ensureHostToken() {
+  if (hostToken) return true;
+  try {
+    const hostResponse = await api("/game/host_token");
+    hostToken = hostResponse.host_token || "";
+    if (hostToken) {
+      localStorage.setItem("avalon_host_token", hostToken);
+      return true;
+    }
+  } catch (err) {
+    // Ignore; caller decides how to proceed.
+  }
+  return false;
+}
+
+async function startCountdown(url) {
   let timeLeft = 3;
   countdownModal.classList.remove("hidden");
+  await ensureHostToken();
   const lobbyUrl = hostToken ? `${url}/lobby?host_token=${hostToken}` : `${url}/lobby`;
   countdownLink.href = lobbyUrl;
 
@@ -229,23 +245,13 @@ async function startTunnel() {
       const status = await api("/tunnel/status");
       if (status.tunnel.public_url) {
         publicBaseUrl = status.tunnel.public_url;
-        if (!hostToken) {
-          try {
-            const hostResponse = await api("/game/host_token");
-            hostToken = hostResponse.host_token || "";
-            if (hostToken) {
-              localStorage.setItem("avalon_host_token", hostToken);
-            }
-          } catch (err) {
-            // Ignore; countdown will fall back to lobby without host token.
-          }
-        }
+        await ensureHostToken();
         setupHintEl.textContent = "Lobby link ready.";
         clearInterval(tunnelPolling);
         tunnelPolling = null;
         if (gameCreated) {
           renderJoinLinks();
-          startCountdown(publicBaseUrl);
+          await startCountdown(publicBaseUrl);
         }
       }
       if (status.tunnel.error) {
