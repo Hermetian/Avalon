@@ -21,6 +21,7 @@ const chatLogEl = $("chatLog");
 const actionPanelEl = $("actionPanel");
 const privateIntelEl = $("privateIntel");
 const botStatusEl = $("botStatus");
+const actionHintEl = $("actionHint");
 
 let lastChatCount = 0;
 let cachedState = null;
@@ -99,7 +100,14 @@ function renderActionMenu(state, privateState) {
     const btn = document.createElement("button");
     btn.textContent = label;
     if (ghost) btn.classList.add("ghost");
-    btn.addEventListener("click", handler);
+    btn.addEventListener("click", async () => {
+      actionHintEl.textContent = "";
+      try {
+        await handler();
+      } catch (err) {
+        actionHintEl.textContent = err.message || "Action failed.";
+      }
+    });
     actionPanelEl.appendChild(btn);
   };
 
@@ -112,6 +120,7 @@ function renderActionMenu(state, privateState) {
     selector.appendChild(info);
 
     const selects = [];
+    const playerIds = state.players.map((p) => p.id);
     for (let i = 0; i < size; i += 1) {
       const select = document.createElement("select");
       state.players.forEach((p) => {
@@ -120,17 +129,38 @@ function renderActionMenu(state, privateState) {
         opt.textContent = p.name;
         select.appendChild(opt);
       });
+      const defaultId = playerIds[i % playerIds.length];
+      if (defaultId) {
+        select.value = defaultId;
+      }
       selects.push(select);
       selector.appendChild(select);
     }
 
+    const syncSelections = () => {
+      const chosen = new Set(selects.map((s) => s.value));
+      selects.forEach((select) => {
+        Array.from(select.options).forEach((opt) => {
+          if (opt.value === select.value) {
+            opt.disabled = false;
+            return;
+          }
+          opt.disabled = chosen.has(opt.value);
+        });
+      });
+    };
+    selects.forEach((select) => select.addEventListener("change", syncSelections));
+    syncSelections();
+
     addButton("Submit team", async () => {
       const team = selects.map((s) => s.value);
-      await api("/game/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player_id: playerId, action_type: "propose_team", payload: { team } }),
-      });
+      if (new Set(team).size !== team.length) {
+        throw new Error("Team cannot contain duplicate players.");
+      }
+      if (team.length !== size) {
+        throw new Error("Invalid team size.");
+      }
+      await submitAction("propose_team", { team });
     });
     actionPanelEl.appendChild(selector);
   };
@@ -241,6 +271,7 @@ $("sendChat").addEventListener("click", async () => {
 
 async function refresh() {
   try {
+    actionHintEl.textContent = "";
     if (playerToken) {
       localStorage.setItem("avalon_player_token", playerToken);
     }
