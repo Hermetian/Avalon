@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import os
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -34,12 +33,8 @@ class TunnelManager:
             self._public_url = None
             self._error = None
             try:
-                command = "cloudflared"
-                if os.path.exists("cloudflared"):
-                    command = "./cloudflared"
-
                 self._process = subprocess.Popen(
-                    [command, "tunnel", "--url", self._target_url],
+                    ["cloudflared", "tunnel", "--url", self._target_url],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
