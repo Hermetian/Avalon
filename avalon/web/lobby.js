@@ -23,6 +23,7 @@ const hostRemoveHuman = $("hostRemoveHuman");
 const isHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 let playerId = localStorage.getItem("avalon_player_id") || "";
 let playerToken = localStorage.getItem("avalon_player_token") || "";
+let gameId = localStorage.getItem("avalon_game_id") || "";
 
 function renderPlayers(players) {
   playerListEl.innerHTML = "";
@@ -96,6 +97,10 @@ async function joinGame() {
     });
     playerId = result.player_id;
     playerToken = result.token || "";
+    if (result.state?.id) {
+      gameId = result.state.id;
+      localStorage.setItem("avalon_game_id", gameId);
+    }
     localStorage.setItem("avalon_player_id", playerId);
     if (playerToken) {
       localStorage.setItem("avalon_player_token", playerToken);
@@ -136,6 +141,14 @@ async function refresh() {
     if (!state.state) {
       lobbyHintEl.textContent = "Waiting for host to create a game.";
       return;
+    }
+    if (state.state.id && state.state.id !== gameId) {
+      gameId = state.state.id;
+      localStorage.setItem("avalon_game_id", gameId);
+      playerId = "";
+      playerToken = "";
+      localStorage.removeItem("avalon_player_id");
+      localStorage.removeItem("avalon_player_token");
     }
     const players = state.state.players || [];
     phaseValueEl.textContent = state.state.phase;
