@@ -109,6 +109,7 @@ class GameEngine:
         self._lock = asyncio.Lock()
         self._token_by_player_id: Dict[str, str] = {}
         self._player_id_by_token: Dict[str, str] = {}
+        self._host_token: Optional[str] = None
 
     @property
     def state(self) -> GameState:
@@ -140,6 +141,7 @@ class GameEngine:
             self._store.clear()
             self._token_by_player_id = {}
             self._player_id_by_token = {}
+            self._host_token = str(uuid.uuid4())
             self._state = GameState(
                 id=str(uuid.uuid4()),
                 config=config,
@@ -611,6 +613,14 @@ class GameEngine:
         if not token:
             raise ValueError("Unknown player")
         return token
+
+    def host_token(self) -> str:
+        if not self._host_token:
+            raise ValueError("Host token not initialized")
+        return self._host_token
+
+    def is_host_token(self, token: Optional[str]) -> bool:
+        return bool(token and self._host_token and token == self._host_token)
 
     def player_id_for_token(self, token: str) -> str:
         player_id = self._player_id_by_token.get(token)

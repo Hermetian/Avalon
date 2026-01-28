@@ -43,6 +43,7 @@ let gameCreated = false;
 let gameStarted = false;
 let publicBaseUrl = null;
 let tunnelPolling = null;
+let hostToken = localStorage.getItem("avalon_host_token") || "";
 
 function defaultEvilCount(total) {
   if (total <= 6) return 2;
@@ -155,6 +156,13 @@ function renderJoinLinks() {
   const url = `${publicBaseUrl}/lobby`;
   card.innerHTML = `<strong>Lobby link</strong><p class=\"hint\">${url}</p>`;
   joinLinksEl.appendChild(card);
+  if (hostToken) {
+    const hostCard = document.createElement("div");
+    hostCard.className = "link-card";
+    const hostUrl = `${publicBaseUrl}/lobby?host_token=${hostToken}`;
+    hostCard.innerHTML = `<strong>Host lobby link</strong><p class=\"hint\">${hostUrl}</p>`;
+    joinLinksEl.appendChild(hostCard);
+  }
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(url).then(
       () => {
@@ -200,14 +208,15 @@ async function refreshEvents() {
 function startCountdown(url) {
   let timeLeft = 3;
   countdownModal.classList.remove("hidden");
-  countdownLink.href = url + "/lobby";
+  const lobbyUrl = hostToken ? `${url}/lobby?host_token=${hostToken}` : `${url}/lobby`;
+  countdownLink.href = lobbyUrl;
 
   const timer = setInterval(() => {
     timeLeft -= 1;
     countdownTimer.textContent = timeLeft;
     if (timeLeft <= 0) {
       clearInterval(timer);
-      window.location.href = url + "/lobby";
+      window.location.href = lobbyUrl;
     }
   }, 1000);
 }
@@ -251,11 +260,18 @@ $("createGame").addEventListener("click", async () => {
       throw new Error("Role selection does not fit the good/evil counts.");
     }
     const lady = ladyToggle.classList.contains("active");
-    await api("/game/new", {
+    const response = await api("/game/new", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ players, roles, hammer_auto_approve: true, lady_of_lake: lady }),
     });
+    hostToken = response.host_token || "";
+    if (hostToken) {
+      localStorage.setItem("avalon_host_token", hostToken);
+    }
+    localStorage.removeItem("avalon_game_id");
+    localStorage.removeItem("avalon_player_id");
+    localStorage.removeItem("avalon_player_token");
     setupHintEl.textContent = "Game created. Starting tunnel…";
     gameCreated = true;
     publicBaseUrl = null;

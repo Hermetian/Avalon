@@ -62,7 +62,7 @@ async def lobby() -> FileResponse:
 @app.post("/game/new")
 async def new_game(req: CreateGameRequest) -> Dict:
     await engine.create_game(req)
-    return {"state": engine.public_state()}
+    return {"state": engine.public_state(), "host_token": engine.host_token()}
 
 
 @app.post("/game/start")
@@ -109,25 +109,49 @@ async def get_events() -> Dict:
 
 
 @app.post("/game/players/add")
-async def add_player(req: PlayerAddRequest) -> Dict:
+async def add_player(req: PlayerAddRequest, request: Request) -> Dict:
+    if (
+        not engine.is_host_token(req.host_token)
+        and request.client
+        and request.client.host not in ("127.0.0.1", "::1")
+    ):
+        return JSONResponse(status_code=403, content={"error": "host token required"})
     state = await engine.add_player(req.is_bot, req.name)
     return {"state": engine.public_state()}
 
 
 @app.post("/game/players/remove")
-async def remove_player(req: PlayerUpdateRequest) -> Dict:
+async def remove_player(req: PlayerUpdateRequest, request: Request) -> Dict:
+    if (
+        not engine.is_host_token(req.host_token)
+        and request.client
+        and request.client.host not in ("127.0.0.1", "::1")
+    ):
+        return JSONResponse(status_code=403, content={"error": "host token required"})
     state = await engine.remove_player(req.player_id)
     return {"state": engine.public_state()}
 
 
 @app.post("/game/players/remove_last_human")
-async def remove_last_human() -> Dict:
+async def remove_last_human(request: Request, host_token: Optional[str] = None) -> Dict:
+    if (
+        not engine.is_host_token(host_token)
+        and request.client
+        and request.client.host not in ("127.0.0.1", "::1")
+    ):
+        return JSONResponse(status_code=403, content={"error": "host token required"})
     state = await engine.remove_last_human_slot()
     return {"state": engine.public_state()}
 
 
 @app.post("/game/players/rename")
-async def rename_player(req: PlayerUpdateRequest) -> Dict:
+async def rename_player(req: PlayerUpdateRequest, request: Request) -> Dict:
+    if (
+        not engine.is_host_token(req.host_token)
+        and request.client
+        and request.client.host not in ("127.0.0.1", "::1")
+    ):
+        return JSONResponse(status_code=403, content={"error": "host token required"})
     if not req.name:
         return JSONResponse(status_code=400, content={"error": "Name required"})
     state = await engine.rename_player(req.player_id, req.name)
@@ -135,7 +159,13 @@ async def rename_player(req: PlayerUpdateRequest) -> Dict:
 
 
 @app.post("/game/players/reset")
-async def reset_player(req: PlayerUpdateRequest) -> Dict:
+async def reset_player(req: PlayerUpdateRequest, request: Request) -> Dict:
+    if (
+        not engine.is_host_token(req.host_token)
+        and request.client
+        and request.client.host not in ("127.0.0.1", "::1")
+    ):
+        return JSONResponse(status_code=403, content={"error": "host token required"})
     state = await engine.reset_player(req.player_id)
     return {"state": engine.public_state()}
 

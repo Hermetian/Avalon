@@ -106,11 +106,13 @@ class ActionRequest(BaseModel):
 class PlayerUpdateRequest(BaseModel):
     player_id: str
     name: Optional[str] = None
+    host_token: Optional[str] = None
 
 
 class PlayerAddRequest(BaseModel):
     is_bot: bool = False
     name: Optional[str] = None
+    host_token: Optional[str] = None
 
 
 class PlayerJoinRequest(BaseModel):

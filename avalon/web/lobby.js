@@ -20,10 +20,23 @@ const hostSlotListEl = $("hostSlotList");
 const hostAddHuman = $("hostAddHuman");
 const hostRemoveHuman = $("hostRemoveHuman");
 
-const isHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const params = new URLSearchParams(window.location.search);
+const urlHostToken = params.get("host_token") || "";
+const urlPlayerToken = params.get("token") || "";
+
 let playerId = localStorage.getItem("avalon_player_id") || "";
-let playerToken = localStorage.getItem("avalon_player_token") || "";
+let playerToken = urlPlayerToken || localStorage.getItem("avalon_player_token") || "";
 let gameId = localStorage.getItem("avalon_game_id") || "";
+let hostToken = urlHostToken || localStorage.getItem("avalon_host_token") || "";
+
+if (urlHostToken) {
+  localStorage.setItem("avalon_host_token", urlHostToken);
+}
+if (urlPlayerToken) {
+  localStorage.setItem("avalon_player_token", urlPlayerToken);
+}
+
+const isHost = Boolean(hostToken) || ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 function renderPlayers(players) {
   playerListEl.innerHTML = "";
@@ -60,7 +73,7 @@ function renderHostSlots(players) {
         await api("/game/players/rename", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ player_id: player.id, name: nameInput.value.trim() || player.name }),
+          body: JSON.stringify({ player_id: player.id, name: nameInput.value.trim() || player.name, host_token: hostToken || undefined }),
         });
         await refresh();
       });
@@ -71,7 +84,7 @@ function renderHostSlots(players) {
         await api("/game/players/reset", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ player_id: player.id }),
+          body: JSON.stringify({ player_id: player.id, host_token: hostToken || undefined }),
         });
         await refresh();
       });
@@ -97,14 +110,17 @@ async function joinGame() {
     });
     playerId = result.player_id;
     playerToken = result.token || "";
+    if (playerToken) {
+      localStorage.setItem("avalon_player_token", playerToken);
+      const url = new URL(window.location.href);
+      url.searchParams.set("token", playerToken);
+      window.history.replaceState({}, "", url);
+    }
     if (result.state?.id) {
       gameId = result.state.id;
       localStorage.setItem("avalon_game_id", gameId);
     }
     localStorage.setItem("avalon_player_id", playerId);
-    if (playerToken) {
-      localStorage.setItem("avalon_player_token", playerToken);
-    }
     seatInfoEl.textContent = `Seat claimed as ${name}.`;
     lobbyHintEl.textContent = "Seat claimed. Click Ready when you're set.";
     await refresh();
@@ -147,8 +163,10 @@ async function refresh() {
       localStorage.setItem("avalon_game_id", gameId);
       playerId = "";
       playerToken = "";
+      hostToken = "";
       localStorage.removeItem("avalon_player_id");
       localStorage.removeItem("avalon_player_token");
+      localStorage.removeItem("avalon_host_token");
     }
     const players = state.state.players || [];
     phaseValueEl.textContent = state.state.phase;
@@ -182,12 +200,13 @@ if (isHost) {
     await api("/game/players/add", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_bot: false }),
+      body: JSON.stringify({ is_bot: false, host_token: hostToken || undefined }),
     });
     await refresh();
   });
   hostRemoveHuman.addEventListener("click", async () => {
-    await api("/game/players/remove_last_human", { method: "POST" });
+    const path = hostToken ? `/game/players/remove_last_human?host_token=${encodeURIComponent(hostToken)}` : "/game/players/remove_last_human";
+    await api(path, { method: "POST" });
     await refresh();
   });
 }
