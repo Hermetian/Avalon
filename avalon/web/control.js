@@ -23,6 +23,9 @@ const goodCountEl = $("goodCount");
 const ladyToggle = $("ladyToggle");
 const joinSection = $("joinSection");
 const liveSection = $("liveSection");
+const countdownModal = $("countdownModal");
+const countdownTimer = $("countdownTimer");
+const countdownLink = $("countdownLink");
 
 const roleOptions = [
   { name: "Percival", alignment: "good", defaultOn: true },
@@ -194,6 +197,21 @@ async function refreshEvents() {
   }
 }
 
+function startCountdown(url) {
+  let timeLeft = 10;
+  countdownModal.classList.remove("hidden");
+  countdownLink.href = url + "/lobby";
+
+  const timer = setInterval(() => {
+    timeLeft -= 1;
+    countdownTimer.textContent = timeLeft;
+    if (timeLeft <= 0) {
+      clearInterval(timer);
+      window.location.href = url + "/lobby";
+    }
+  }, 1000);
+}
+
 async function startTunnel() {
   try {
     await api("/tunnel/start", { method: "POST" });
@@ -207,6 +225,7 @@ async function startTunnel() {
         tunnelPolling = null;
         if (gameCreated) {
           renderJoinLinks();
+          startCountdown(publicBaseUrl);
         }
       }
       if (status.tunnel.error) {

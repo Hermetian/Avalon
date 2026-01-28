@@ -38,8 +38,8 @@ function renderPlayerTable(visibility = [], ladyHolderId) {
     const tag = entry.alignment_hint === "evil"
       ? "Evil"
       : entry.alignment_hint === "merlin_candidate"
-      ? "Merlin?"
-      : "Unknown";
+        ? "Merlin?"
+        : "Unknown";
     const ladyTag = entry.id === ladyHolderId ? "<div class=\"tag\">Lady</div>" : "";
     card.innerHTML = `${ladyTag}<div class=\"tag\">${tag}</div><strong>${entry.name}</strong>`;
     playerTableEl.appendChild(card);
@@ -248,6 +248,11 @@ async function refresh() {
 
     if (!cachedState) {
       roleRevealEl.textContent = "Waiting for host to create a game.";
+      return;
+    }
+
+    if (cachedState.phase === "lobby") {
+      window.location.href = "/lobby";
       return;
     }
 
