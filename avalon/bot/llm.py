@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-import json
+import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 from ..config import SETTINGS
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
-class LLMResult:
-    text: str
-    data: Dict[str, Any]
+class ExtractionResult:
+    success: bool
+    value: Any
+    error: Optional[str] = None
 
 
 class LLMClient:
@@ -27,23 +30,111 @@ class LLMClient:
             self._model, self._tokenizer = load(self.model_id)
         return self._model, self._tokenizer
 
-    def generate_json(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> LLMResult:
+    def generate(self, prompt: str, max_tokens: int = 512, temperature: float = 0.4) -> str:
+        """Generate raw text from the LLM."""
         model, tokenizer = self._ensure_loaded()
         from mlx_lm import generate
+        from mlx_lm.sample_utils import make_sampler
 
+        sampler = make_sampler(temp=temperature)
         text = generate(
             model,
             tokenizer,
             prompt=prompt,
             max_tokens=max_tokens,
-            temp=temperature,
+            sampler=sampler,
         )
-        data = self._extract_json(text)
-        return LLMResult(text=text, data=data)
+        return text
+
+    def generate_with_retry(
+        self,
+        prompt: str,
+        extractor: Callable[[str], ExtractionResult],
+        max_retries: int = 3,
+        max_tokens: int = 512,
+        base_temperature: float = 0.4,
+    ) -> ExtractionResult:
+        """Generate with retry logic, re-prompting with error feedback on failure."""
+        current_prompt = prompt
+        temperature = base_temperature
+
+        for attempt in range(max_retries):
+            logger.debug(f"LLM attempt {attempt + 1}/{max_retries}, temp={temperature:.2f}")
+            text = self.generate(current_prompt, max_tokens=max_tokens, temperature=temperature)
+            logger.debug(f"LLM response: {text[:200]}...")
+
+            result = extractor(text)
+            if result.success:
+                return result
+
+            logger.warning(f"Extraction failed (attempt {attempt + 1}): {result.error}")
+
+            # Build retry prompt with error feedback
+            current_prompt = (
+                f"{prompt}\n\n"
+                f"[Your previous response was invalid: {result.error}]\n"
+                f"Please try again, following the format exactly."
+            )
+            # Slightly increase temperature on retry
+            temperature = min(0.8, temperature + 0.15)
+
+        return ExtractionResult(success=False, value=None, error=f"Failed after {max_retries} attempts")
+
+    # --- Extraction methods for the new simple format ---
 
     @staticmethod
-    def _extract_json(text: str) -> Dict[str, Any]:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
+    def extract_team(text: str) -> ExtractionResult:
+        """Extract team names from 'TEAM: Name1, Name2' format."""
+        # Look for TEAM: followed by comma-separated names
+        match = re.search(r"TEAM:\s*([^\n]+)", text, re.IGNORECASE)
         if not match:
-            raise ValueError("Model did not return JSON")
-        return json.loads(match.group(0))
+            return ExtractionResult(success=False, value=None, error="No 'TEAM:' line found")
+
+        names_str = match.group(1).strip()
+        if not names_str:
+            return ExtractionResult(success=False, value=None, error="TEAM: line is empty")
+
+        # Split by comma and clean up names
+        names = [name.strip() for name in names_str.split(",") if name.strip()]
+        if not names:
+            return ExtractionResult(success=False, value=None, error="No valid names in TEAM: line")
+
+        return ExtractionResult(success=True, value=names)
+
+    @staticmethod
+    def extract_vote(text: str) -> ExtractionResult:
+        """Extract vote from 'VOTE: APPROVE' or 'VOTE: REJECT' format."""
+        match = re.search(r"VOTE:\s*(APPROVE|REJECT)", text, re.IGNORECASE)
+        if not match:
+            return ExtractionResult(
+                success=False, value=None, error="No 'VOTE: APPROVE' or 'VOTE: REJECT' found"
+            )
+
+        vote = match.group(1).upper()
+        return ExtractionResult(success=True, value=vote == "APPROVE")
+
+    @staticmethod
+    def extract_quest(text: str) -> ExtractionResult:
+        """Extract quest vote from 'QUEST: SUCCESS' or 'QUEST: FAIL' format."""
+        match = re.search(r"QUEST:\s*(SUCCESS|FAIL)", text, re.IGNORECASE)
+        if not match:
+            return ExtractionResult(
+                success=False, value=None, error="No 'QUEST: SUCCESS' or 'QUEST: FAIL' found"
+            )
+
+        quest = match.group(1).upper()
+        return ExtractionResult(success=True, value=quest == "SUCCESS")
+
+    @staticmethod
+    def extract_target(text: str, keyword: str = "TARGET") -> ExtractionResult:
+        """Extract target name from 'TARGET: Name' or 'INSPECT: Name' format."""
+        pattern = rf"{keyword}:\s*([^\n]+)"
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            return ExtractionResult(success=False, value=None, error=f"No '{keyword}:' line found")
+
+        name = match.group(1).strip()
+        if not name:
+            return ExtractionResult(success=False, value=None, error=f"{keyword}: line is empty")
+
+        return ExtractionResult(success=True, value=name)
