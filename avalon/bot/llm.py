@@ -126,6 +126,25 @@ class LLMClient:
         return ExtractionResult(success=True, value=quest == "SUCCESS")
 
     @staticmethod
+    def extract_say(text: str) -> ExtractionResult:
+        """Extract chat message from 'SAY: message' format."""
+        match = re.search(r"SAY:\s*([^\n]+)", text, re.IGNORECASE)
+        if not match:
+            return ExtractionResult(success=False, value=None, error="No 'SAY:' line found")
+
+        message = match.group(1).strip()
+        if not message:
+            return ExtractionResult(success=False, value=None, error="SAY: line is empty")
+
+        # Clean up the message - remove quotes if present
+        if message.startswith('"') and message.endswith('"'):
+            message = message[1:-1]
+        if message.startswith("'") and message.endswith("'"):
+            message = message[1:-1]
+
+        return ExtractionResult(success=True, value=message)
+
+    @staticmethod
     def extract_target(text: str, keyword: str = "TARGET") -> ExtractionResult:
         """Extract target name from 'TARGET: Name' or 'INSPECT: Name' format."""
         pattern = rf"{keyword}:\s*([^\n]+)"

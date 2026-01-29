@@ -31,6 +31,13 @@ class BotManager:
         payload = decision.get("payload", {})
         if not isinstance(payload, dict):
             payload = {}
+
+        # If the bot wants to say something, send chat first
+        message = decision.get("message")
+        if message and state.phase != Phase.lobby:
+            await self.engine.apply_action(bot_id, "chat", {"message": message})
+
+        # Then perform the actual action
         if action_type == "chat" and state.phase != Phase.lobby:
             await self.engine.apply_action(bot_id, action_type, payload)
             return

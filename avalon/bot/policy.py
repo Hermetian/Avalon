@@ -81,32 +81,63 @@ class BotPolicy:
                     value=None,
                     error=f"Team must have exactly {required_size} players, got {len(ids)}",
                 )
-            return ExtractionResult(success=True, value=ids)
+            # Also extract the chat message
+            say_result = LLMClient.extract_say(text)
+            return ExtractionResult(success=True, value={"team": ids, "say": say_result.value})
 
         result = self._llm.generate_with_retry(prompt, extractor)
         if result.success:
-            logger.info(f"LLM proposed team: {result.value}")
-            return {"action_type": "propose_team", "payload": {"team": result.value}}
+            team = result.value["team"]
+            say = result.value.get("say")
+            logger.info(f"LLM proposed team: {team}, saying: {say}")
+            action = {"action_type": "propose_team", "payload": {"team": team}}
+            if say:
+                action["message"] = say
+            return action
 
         logger.warning(f"LLM team proposal failed: {result.error}, using heuristic")
         return self._heuristic(state, player)
 
     def _decide_team_vote(self, prompt: str, state: GameState, player: Player) -> Dict:
         """Handle team vote with LLM + fallback."""
-        result = self._llm.generate_with_retry(prompt, LLMClient.extract_vote)
+        def extractor(text: str) -> ExtractionResult:
+            vote_result = LLMClient.extract_vote(text)
+            if not vote_result.success:
+                return vote_result
+            say_result = LLMClient.extract_say(text)
+            return ExtractionResult(success=True, value={"approve": vote_result.value, "say": say_result.value})
+
+        result = self._llm.generate_with_retry(prompt, extractor)
         if result.success:
-            logger.info(f"LLM voted: {'APPROVE' if result.value else 'REJECT'}")
-            return {"action_type": "vote_team", "payload": {"approve": result.value}}
+            approve = result.value["approve"]
+            say = result.value.get("say")
+            logger.info(f"LLM voted: {'APPROVE' if approve else 'REJECT'}, saying: {say}")
+            action = {"action_type": "vote_team", "payload": {"approve": approve}}
+            if say:
+                action["message"] = say
+            return action
 
         logger.warning(f"LLM vote failed: {result.error}, using heuristic")
         return self._heuristic(state, player)
 
     def _decide_quest(self, prompt: str, state: GameState, player: Player) -> Dict:
         """Handle quest vote with LLM + fallback."""
-        result = self._llm.generate_with_retry(prompt, LLMClient.extract_quest)
+        def extractor(text: str) -> ExtractionResult:
+            quest_result = LLMClient.extract_quest(text)
+            if not quest_result.success:
+                return quest_result
+            say_result = LLMClient.extract_say(text)
+            return ExtractionResult(success=True, value={"success": quest_result.value, "say": say_result.value})
+
+        result = self._llm.generate_with_retry(prompt, extractor)
         if result.success:
-            logger.info(f"LLM quest vote: {'SUCCESS' if result.value else 'FAIL'}")
-            return {"action_type": "quest_vote", "payload": {"success": result.value}}
+            success = result.value["success"]
+            say = result.value.get("say")
+            logger.info(f"LLM quest vote: {'SUCCESS' if success else 'FAIL'}, saying: {say}")
+            action = {"action_type": "quest_vote", "payload": {"success": success}}
+            if say:
+                action["message"] = say
+            return action
 
         logger.warning(f"LLM quest vote failed: {result.error}, using heuristic")
         return self._heuristic(state, player)
@@ -116,29 +147,35 @@ class BotPolicy:
         # Defer to human evil teammates if present
         if self._has_human_evil_player(state):
             logger.info("Bot assassin deferring to human evil player for assassination decision")
-            return {"action_type": "chat", "payload": {"message": "pass"}}
+            return {"action_type": "chat", "payload": {"message": "I'll let the team decide who we should target."}}
 
         def extractor(text: str) -> ExtractionResult:
-            result = LLMClient.extract_target(text, "TARGET")
-            if not result.success:
-                return result
+            target_result = LLMClient.extract_target(text, "TARGET")
+            if not target_result.success:
+                return target_result
             # Resolve name to ID
-            target_id = self._resolve_name_to_id(state, result.value)
+            target_id = self._resolve_name_to_id(state, target_result.value)
             if target_id is None:
                 return ExtractionResult(
-                    success=False, value=None, error=f"Unknown player: '{result.value}'"
+                    success=False, value=None, error=f"Unknown player: '{target_result.value}'"
                 )
             # Can't target self
             if target_id == player.id:
                 return ExtractionResult(
                     success=False, value=None, error="Cannot assassinate yourself"
                 )
-            return ExtractionResult(success=True, value=target_id)
+            say_result = LLMClient.extract_say(text)
+            return ExtractionResult(success=True, value={"target_id": target_id, "say": say_result.value})
 
         result = self._llm.generate_with_retry(prompt, extractor)
         if result.success:
-            logger.info(f"LLM assassination target: {result.value}")
-            return {"action_type": "assassinate", "payload": {"target_id": result.value}}
+            target_id = result.value["target_id"]
+            say = result.value.get("say")
+            logger.info(f"LLM assassination target: {target_id}, saying: {say}")
+            action = {"action_type": "assassinate", "payload": {"target_id": target_id}}
+            if say:
+                action["message"] = say
+            return action
 
         logger.warning(f"LLM assassination failed: {result.error}, using heuristic")
         return self._heuristic(state, player)
@@ -147,26 +184,32 @@ class BotPolicy:
         """Handle Lady of the Lake with LLM + validation + fallback."""
 
         def extractor(text: str) -> ExtractionResult:
-            result = LLMClient.extract_target(text, "INSPECT")
-            if not result.success:
-                return result
+            target_result = LLMClient.extract_target(text, "INSPECT")
+            if not target_result.success:
+                return target_result
             # Resolve name to ID
-            target_id = self._resolve_name_to_id(state, result.value)
+            target_id = self._resolve_name_to_id(state, target_result.value)
             if target_id is None:
                 return ExtractionResult(
-                    success=False, value=None, error=f"Unknown player: '{result.value}'"
+                    success=False, value=None, error=f"Unknown player: '{target_result.value}'"
                 )
             # Can't target self
             if target_id == player.id:
                 return ExtractionResult(
                     success=False, value=None, error="Cannot inspect yourself"
                 )
-            return ExtractionResult(success=True, value=target_id)
+            say_result = LLMClient.extract_say(text)
+            return ExtractionResult(success=True, value={"target_id": target_id, "say": say_result.value})
 
         result = self._llm.generate_with_retry(prompt, extractor)
         if result.success:
-            logger.info(f"LLM Lady of Lake target: {result.value}")
-            return {"action_type": "lady_peek", "payload": {"target_id": result.value}}
+            target_id = result.value["target_id"]
+            say = result.value.get("say")
+            logger.info(f"LLM Lady of Lake target: {target_id}, saying: {say}")
+            action = {"action_type": "lady_peek", "payload": {"target_id": target_id}}
+            if say:
+                action["message"] = say
+            return action
 
         logger.warning(f"LLM Lady of Lake failed: {result.error}, using heuristic")
         return self._heuristic(state, player)
