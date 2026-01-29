@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Dict, List
+import random
+from typing import List
 
 from ..models import Alignment, GameState, Phase, Player, Role
 from ..game import alignment_for, team_size
@@ -9,12 +10,15 @@ from ..game import alignment_for, team_size
 # Example dialogue patterns extracted from Avalon-NLU dataset
 EVIL_DIALOGUE_EXAMPLES = [
     "i'll just go ahead and approve it. its just the first round.",
-    "i want to note that it's a bit weird that {player} did not put themselves on the party.",
+    "i want to note that it's a bit weird that they did not put themselves on the party.",
     "nothing certain, but it is a little suspicious, that's all.",
-    "i think {player} is suspicious that they voted no in last round.",
+    "i think they're suspicious since they voted no in last round.",
     "typically if you are good, you would want to put yourself on the party.",
-    "it would be weird for {player} to be bad, but they did also vote no which is a bit suspicious.",
+    "it would be weird for them to be bad, but they did also vote no which is a bit suspicious.",
     "this looks good to me. however as a good person, i would like to suggest myself to be on the quest.",
+    "i agree with this party, no objections from me.",
+    "why not put yourself on the party? that's a bit odd.",
+    "i'm not totally convinced but i'll go along with it for now.",
 ]
 
 GOOD_DIALOGUE_EXAMPLES = [
@@ -23,17 +27,50 @@ GOOD_DIALOGUE_EXAMPLES = [
     "we have nothing else to go off of so i am fine with this party.",
     "i'd rather keep sticking with the first party and adding to it.",
     "let's just stick with this and gain some information.",
-    "i guess {player} is a little suspicious for not including themselves in the first quest.",
+    "i guess they're a little suspicious for not including themselves in the first quest.",
     "people who are eager to make extreme allegations are also suspicious.",
+    "i am good, so it won't fail because of me.",
+    "this strategy sounds right to me. i would approve it.",
+    "let's see what happens and go from there.",
 ]
 
 MERLIN_DIALOGUE_EXAMPLES = [
-    "hmm so this is what i would suggest, we had a party with {player1} and {player2} succeed.",
+    "hmm so this is what i would suggest, we had a party succeed last time.",
     "i would like to quickly narrow down this scope and test them.",
-    "if the quest succeeds, we don't know if they're good but we gain a success. if it fails we have something to focus on.",
+    "if the quest succeeds, we gain a success. if it fails we have something to focus on.",
     "given the first round, we have pretty strong evidence about what happened.",
-    "a normal percival should not easily reveal themselves - if i were percival, i would wait for more information.",
+    "a normal percival should not easily reveal themselves.",
+    "i have a hunch about this but let's see how it plays out.",
+    "based on the voting patterns, i think we should try this combination.",
 ]
+
+
+def _sample_dialogue_examples(player: Player) -> str:
+    """Sample a mix of dialogue examples based on player role."""
+    alignment = alignment_for(player.role)
+
+    if player.role == Role.merlin:
+        # Merlin: 2 merlin + 1 good + 1 evil
+        samples = (
+            random.sample(MERLIN_DIALOGUE_EXAMPLES, min(2, len(MERLIN_DIALOGUE_EXAMPLES)))
+            + random.sample(GOOD_DIALOGUE_EXAMPLES, 1)
+            + random.sample(EVIL_DIALOGUE_EXAMPLES, 1)
+        )
+    elif alignment == Alignment.evil:
+        # Evil: 3 evil + 1 good
+        samples = (
+            random.sample(EVIL_DIALOGUE_EXAMPLES, min(3, len(EVIL_DIALOGUE_EXAMPLES)))
+            + random.sample(GOOD_DIALOGUE_EXAMPLES, 1)
+        )
+    else:
+        # Good: 3 good + 1 evil
+        samples = (
+            random.sample(GOOD_DIALOGUE_EXAMPLES, min(3, len(GOOD_DIALOGUE_EXAMPLES)))
+            + random.sample(EVIL_DIALOGUE_EXAMPLES, 1)
+        )
+
+    random.shuffle(samples)
+    return "\n".join(f'- "{s}"' for s in samples)
 
 
 def build_system_prompt(player: Player, knowledge: List[str]) -> str:
@@ -42,7 +79,7 @@ def build_system_prompt(player: Player, knowledge: List[str]) -> str:
     alignment_str = alignment.value if alignment else "Unknown"
     facts = "\n".join(f"- {item}" for item in knowledge) or "- None"
 
-    # Role-specific personality guidance with dialogue examples
+    # Role-specific personality guidance
     if alignment == Alignment.evil:
         personality = (
             "You are EVIL. Your goal is to sabotage quests and avoid detection.\n"
@@ -50,23 +87,19 @@ def build_system_prompt(player: Player, knowledge: List[str]) -> str:
             "- Pretend to be good and helpful\n"
             "- Cast SUBTLE suspicion on good players (not too aggressive)\n"
             "- Defend your evil teammates indirectly\n"
-            "- Act confused or concerned, not aggressive\n\n"
-            "Example things evil players say:\n"
-            '- "i think [player] is suspicious that they voted no last round"\n'
-            '- "nothing certain, but it is a little suspicious"\n'
-            '- "as a good person, i would like to suggest myself for the quest"'
+            "- Act confused or concerned, not aggressive"
         )
     else:
         personality = (
             "You are GOOD. Your goal is to find evil players and succeed on quests.\n"
             "- Share your genuine suspicions and observations\n"
             "- Pay attention to voting patterns and behavior\n"
-            "- Be willing to take risks to find information\n\n"
-            "Example things good players say:\n"
-            '- "this seems reasonable to me, let\'s see how it goes"\n'
-            '- "we have nothing to go off of so i am fine with this party"\n'
-            '- "let\'s stick with this and gain some information"'
+            "- Be willing to take risks to find information"
         )
+
+    # Add sampled dialogue examples
+    examples = _sample_dialogue_examples(player)
+    personality += f"\n\nExample things players say:\n{examples}"
 
     # Special role guidance
     role_tips = ""
@@ -75,11 +108,7 @@ def build_system_prompt(player: Player, knowledge: List[str]) -> str:
             "\nYou are MERLIN - you know who is evil! But be careful:\n"
             "- Don't be too obvious or the Assassin will target you\n"
             "- Guide good players subtly by framing insights as logical deductions\n"
-            "- Say things like 'given the voting pattern...' rather than stating facts directly\n\n"
-            "Example Merlin dialogue (subtle guidance):\n"
-            '- "i would like to quickly narrow down this scope and test them"\n'
-            '- "if the quest fails we have something to focus on"\n'
-            '- "given the first round, we have some evidence about what happened"'
+            "- Say things like 'given the voting pattern...' rather than stating facts directly"
         )
     elif player.role == Role.assassin:
         role_tips = (
