@@ -8,7 +8,13 @@ from ..config import SETTINGS
 from ..game import alignment_for, team_size
 from ..models import Alignment, GameState, Phase, Player, Role
 from .llm import LLMClient, ExtractionResult
-from .prompts import build_action_instructions, build_context, build_system_prompt
+from .prompts import (
+    build_action_instructions,
+    build_context,
+    build_system_prompt,
+    GOOD_DIALOGUE_EXAMPLES,
+    EVIL_DIALOGUE_EXAMPLES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -234,39 +240,66 @@ class BotPolicy:
 
     def _heuristic(self, state: GameState, player: Player) -> Dict:
         """Fallback heuristic decision-making."""
+        alignment = alignment_for(player.role) if player.role else Alignment.loyal
+
         if state.phase == Phase.team_proposal:
             size = team_size(state.config.player_count, state.quest_number)
             ids = [p.id for p in state.players]
             team = [player.id] + random.sample([pid for pid in ids if pid != player.id], k=size - 1)
-            return {"action_type": "propose_team", "payload": {"team": team}}
+            msg = self._random_chat(alignment, "proposal")
+            return {"action_type": "propose_team", "payload": {"team": team}, "message": msg}
 
         if state.phase == Phase.team_vote:
-            if player.role and alignment_for(player.role) == Alignment.evil:
+            if alignment == Alignment.evil:
                 approve = any(pid in state.proposed_team for pid in self._evil_ids(state))
                 approve = approve or random.random() < 0.3
             else:
                 approve = player.id in state.proposed_team or random.random() < 0.4
-            return {"action_type": "vote_team", "payload": {"approve": approve}}
+            msg = self._random_chat(alignment, "approve" if approve else "reject")
+            return {"action_type": "vote_team", "payload": {"approve": approve}, "message": msg}
 
         if state.phase == Phase.quest:
-            if player.role and alignment_for(player.role) == Alignment.evil:
+            if alignment == Alignment.evil:
                 success = random.random() > 0.7
             else:
                 success = True
-            return {"action_type": "quest_vote", "payload": {"success": success}}
+            msg = self._random_chat(alignment, "quest")
+            return {"action_type": "quest_vote", "payload": {"success": success}, "message": msg}
 
         if state.phase == Phase.assassination and player.role == Role.assassin:
             # Defer to human evil teammates if present
             if self._has_human_evil_player(state):
-                return {"action_type": "chat", "payload": {"message": "pass"}}
+                return {"action_type": "chat", "payload": {"message": "i'll let the team decide who to target."}}
             candidates = [p.id for p in state.players if p.id != player.id]
-            return {"action_type": "assassinate", "payload": {"target_id": random.choice(candidates)}}
+            target = random.choice(candidates)
+            target_name = next(p.name for p in state.players if p.id == target)
+            msg = f"i think {target_name} might be merlin based on their behavior."
+            return {"action_type": "assassinate", "payload": {"target_id": target}, "message": msg}
 
         if state.phase == Phase.lady_of_lake and state.lady_holder_id == player.id:
             candidates = [p.id for p in state.players if p.id != player.id]
-            return {"action_type": "lady_peek", "payload": {"target_id": random.choice(candidates)}}
+            target = random.choice(candidates)
+            target_name = next(p.name for p in state.players if p.id == target)
+            msg = f"let me check {target_name} - i want to know more about them."
+            return {"action_type": "lady_peek", "payload": {"target_id": target}, "message": msg}
 
         return {"action_type": "chat", "payload": {"message": "pass"}}
+
+    @staticmethod
+    def _random_chat(alignment: Alignment, context: str) -> str:
+        """Pick a random chat message based on alignment and context."""
+        # Mix examples like the LLM prompts do
+        if alignment == Alignment.evil:
+            pool = random.sample(EVIL_DIALOGUE_EXAMPLES, min(3, len(EVIL_DIALOGUE_EXAMPLES)))
+            pool += random.sample(GOOD_DIALOGUE_EXAMPLES, 1)
+        else:
+            pool = random.sample(GOOD_DIALOGUE_EXAMPLES, min(3, len(GOOD_DIALOGUE_EXAMPLES)))
+            pool += random.sample(EVIL_DIALOGUE_EXAMPLES, 1)
+
+        # Pick one and clean it up (remove {player} placeholders)
+        msg = random.choice(pool)
+        msg = msg.replace("{player}", "someone").replace("{player1}", "someone").replace("{player2}", "someone else")
+        return msg
 
     @staticmethod
     def _evil_ids(state: GameState) -> List[str]:
