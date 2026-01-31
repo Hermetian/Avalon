@@ -204,12 +204,18 @@ async def remove_last_human(request: Request, host_token: Optional[str] = None) 
 
 @app.post("/game/players/rename")
 async def rename_player(req: PlayerUpdateRequest, request: Request) -> Dict:
-    if (
-        not engine.is_host_token(req.host_token)
-        and request.client
-        and request.client.host not in ("127.0.0.1", "::1")
-    ):
-        return JSONResponse(status_code=403, content={"error": "host token required"})
+    is_localhost = request.client and request.client.host in ("127.0.0.1", "::1")
+    is_host = engine.is_host_token(req.host_token)
+    # Allow self-rename if player provides their own valid token
+    is_self_rename = False
+    if req.token:
+        try:
+            token_player_id = engine.player_id_for_token(req.token)
+            is_self_rename = token_player_id == req.player_id
+        except ValueError:
+            pass
+    if not is_localhost and not is_host and not is_self_rename:
+        return JSONResponse(status_code=403, content={"error": "Not authorized to rename this player"})
     if not req.name:
         return JSONResponse(status_code=400, content={"error": "Name required"})
     state = await engine.rename_player(req.player_id, req.name)

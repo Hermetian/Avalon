@@ -187,7 +187,12 @@ def build_action_instructions(state: GameState, player: Player) -> str:
         return _quest_instructions(player)
 
     if state.phase == Phase.assassination and player.role == Role.assassin:
-        return _assassination_instructions(player, player_names)
+        # Get evil teammate names so assassin doesn't target them
+        evil_names = [
+            p.name for p in state.players
+            if p.role and alignment_for(p.role) == Alignment.evil and p.id != player.id
+        ]
+        return _assassination_instructions(player, player_names, evil_names)
 
     if state.phase == Phase.lady_of_lake and state.lady_holder_id == player.id:
         return _lady_of_lake_instructions(player, player_names)
@@ -285,8 +290,10 @@ QUEST: {example_vote}
 Your response:"""
 
 
-def _assassination_instructions(player: Player, player_names: List[str]) -> str:
-    targets = [name for name in player_names if name != player.name]
+def _assassination_instructions(player: Player, player_names: List[str], evil_names: List[str] = None) -> str:
+    # Exclude self and known evil teammates - they can't be Merlin
+    evil_names = evil_names or []
+    targets = [name for name in player_names if name != player.name and name not in evil_names]
     targets_list = ", ".join(targets)
 
     return f"""=== YOUR TASK ===

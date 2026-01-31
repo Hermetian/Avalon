@@ -30,6 +30,7 @@ let playerId = localStorage.getItem("avalon_player_id") || "";
 let playerToken = urlPlayerToken || localStorage.getItem("avalon_player_token") || "";
 let gameId = localStorage.getItem("avalon_game_id") || "";
 let hostToken = urlHostToken || localStorage.getItem("avalon_host_token") || "";
+let playerName = localStorage.getItem("avalon_player_name") || "";
 
 if (urlHostToken) {
   localStorage.setItem("avalon_host_token", urlHostToken);
@@ -39,6 +40,11 @@ if (urlPlayerToken) {
 }
 
 const isHost = Boolean(hostToken) || ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+// Pre-fill name input from localStorage
+if (playerName) {
+  playerNameInput.value = playerName;
+}
 
 function updatePersonalLink() {
   if (!playerToken) {
@@ -121,6 +127,33 @@ async function joinGame() {
     lobbyHintEl.textContent = "Enter your name first.";
     return;
   }
+
+  // Save name to localStorage
+  localStorage.setItem("avalon_player_name", name);
+  playerName = name;
+
+  // If already joined, rename instead of joining again
+  if (playerId) {
+    try {
+      await api("/game/players/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          player_id: playerId,
+          name,
+          host_token: hostToken || undefined,
+          token: playerToken || undefined,
+        }),
+      });
+      seatInfoEl.textContent = `Seat claimed as ${name}.`;
+      lobbyHintEl.textContent = "Name updated.";
+      await refresh();
+    } catch (err) {
+      lobbyHintEl.textContent = "Couldn't rename: " + err.message;
+    }
+    return; // Don't try to join again if already joined
+  }
+
   try {
     const result = await api("/game/players/join", {
       method: "POST",
@@ -246,3 +279,8 @@ if (isHost) {
 
 refresh();
 setInterval(refresh, 1500);
+
+// Auto-join for host if they have a saved name and aren't already joined
+if (isHost && playerName && !playerId) {
+  joinGame();
+}

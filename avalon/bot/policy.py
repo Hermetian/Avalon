@@ -164,6 +164,12 @@ class BotPolicy:
                 return ExtractionResult(
                     success=False, value=None, error="Cannot assassinate yourself"
                 )
+            # Can't target evil teammates - they can't be Merlin
+            target_player = next((p for p in state.players if p.id == target_id), None)
+            if target_player and target_player.role and alignment_for(target_player.role) == Alignment.evil:
+                return ExtractionResult(
+                    success=False, value=None, error=f"Cannot target {target_player.name} - they are your evil teammate"
+                )
             say_result = LLMClient.extract_say(text)
             return ExtractionResult(success=True, value={"target_id": target_id, "say": say_result.value})
 

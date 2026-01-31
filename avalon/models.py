@@ -107,6 +107,7 @@ class PlayerUpdateRequest(BaseModel):
     player_id: str
     name: Optional[str] = None
     host_token: Optional[str] = None
+    token: Optional[str] = None  # Player's own token for self-rename
 
 
 class PlayerAddRequest(BaseModel):

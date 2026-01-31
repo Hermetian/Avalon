@@ -1,15 +1,15 @@
 :root {
   color-scheme: light;
-  --bg: #efe6db;
-  --ink: #161513;
-  --muted: #6b625b;
-  --accent: #d0663d;
-  --accent-2: #2e6f6b;
-  --panel: rgba(255, 250, 244, 0.9);
-  --panel-2: #f3eadf;
-  --shadow: 0 18px 50px rgba(20, 15, 10, 0.18);
-  --border: 1px solid rgba(22, 22, 22, 0.08);
-  --radius: 20px;
+  --bg: #f0f2f5;
+  --ink: #1a1d21;
+  --muted: #5f6368;
+  --accent: #3d5a80;
+  --accent-2: #98c1d9;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-2: #f8f9fa;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --border: 1px solid rgba(0, 0, 0, 0.06);
+  --radius: 16px;
 }
 
 * {
@@ -18,11 +18,9 @@
 
 body {
   margin: 0;
-  font-family: "Avenir Next", "Helvetica Neue", "Inter", system-ui, sans-serif;
+  font-family: "Inter", "SF Pro Display", system-ui, sans-serif;
   color: var(--ink);
-  background: radial-gradient(circle at 12% 8%, #fff1d9, transparent 48%),
-    radial-gradient(circle at 78% 2%, #d9f1ef, transparent 40%),
-    radial-gradient(circle at 20% 60%, #f6d6c6, transparent 50%), var(--bg);
+  background: var(--bg);
   min-height: 100vh;
 }
 
@@ -43,10 +41,11 @@ body {
 }
 
 .hero h1 {
-  font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
-  font-size: clamp(2.3rem, 3.2vw, 3.4rem);
-  line-height: 1.08;
-  margin: 0 0 12px;
+  font-family: inherit;
+  font-size: clamp(1.5rem, 2vw, 2rem);
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 8px;
 }
 
 .eyebrow {
@@ -110,7 +109,8 @@ body {
 
 .panel h2 {
   margin-top: 0;
-  font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 1.1rem;
 }
 
 .panel.span {
@@ -162,11 +162,11 @@ button {
   color: #fff;
   border: none;
   padding: 10px 16px;
-  border-radius: 12px;
+  border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 10px 24px rgba(208, 102, 61, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 12px rgba(61, 90, 128, 0.2);
 }
 
 button.ghost {
@@ -255,10 +255,10 @@ pre {
 }
 
 .role-toggle.active {
-  background: linear-gradient(120deg, #f4c29b, #e08963);
-  color: #1b120c;
-  border-color: rgba(208, 102, 61, 0.5);
-  box-shadow: 0 12px 24px rgba(208, 102, 61, 0.22);
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(61, 90, 128, 0.25);
 }
 
 .link-grid {
@@ -288,8 +288,8 @@ pre {
 }
 
 .player-card.evil {
-  border-color: rgba(199, 92, 44, 0.6);
-  box-shadow: 0 8px 20px rgba(199, 92, 44, 0.2);
+  border-color: rgba(180, 60, 60, 0.5);
+  box-shadow: 0 4px 12px rgba(180, 60, 60, 0.15);
 }
 
 .player-card.merlin {
@@ -409,9 +409,9 @@ pre {
 }
 
 .timer {
-  font-family: "Iowan Old Style", serif;
-  font-size: 6rem;
-  font-weight: 700;
+  font-family: inherit;
+  font-size: 5rem;
+  font-weight: 600;
   color: var(--accent);
   line-height: 1;
   margin: 20px 0;
